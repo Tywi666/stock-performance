@@ -31,7 +31,8 @@ COPY --from=frontend-build /app/frontend/dist ./backend/static/
 
 WORKDIR /app/backend
 
-# Serve static files from FastAPI — Railway injects $PORT dynamically
+# Serve static files from FastAPI
+# railway.toml startCommand handles $PORT; this CMD is local fallback only
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
