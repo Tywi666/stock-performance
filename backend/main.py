@@ -474,6 +474,27 @@ def health():
     return {"status": "ok", "service": "Stock Performance API"}
 
 
+@app.get("/api/debug")
+def debug_info():
+    """Show env var status without exposing secrets."""
+    creds_email = "N/A"
+    if GOOGLE_CREDS_JSON:
+        try:
+            d = json.loads(GOOGLE_CREDS_JSON)
+            creds_email = d.get("client_email", "MISSING_KEY")
+        except Exception as ex:
+            creds_email = f"JSON_PARSE_ERROR: {repr(ex)}"
+    elif os.path.exists(GOOGLE_CREDS_FILE):
+        creds_email = f"FROM_FILE:{GOOGLE_CREDS_FILE}"
+    return {
+        "service_account_email": creds_email,
+        "spreadsheet_id": SPREADSHEET_ID or "(not set, using name lookup)",
+        "sheet_name": SHEET_NAME,
+        "worksheet_name": WORKSHEET_NAME,
+        "has_line_secret": bool(LINE_CHANNEL_SECRET),
+    }
+
+
 # ─── Serve built React frontend (production) ──────────────────────────────────
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(STATIC_DIR):
