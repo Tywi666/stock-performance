@@ -41,6 +41,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
+
 def get_worksheet():
     if GOOGLE_CREDS_JSON:
         creds_dict = json.loads(GOOGLE_CREDS_JSON)
@@ -51,7 +53,17 @@ def get_worksheet():
         raise RuntimeError("No Google credentials found. Set GOOGLE_CREDENTIALS_JSON or provide credentials.json")
 
     client = gspread.authorize(creds)
-    sh = client.open(SHEET_NAME)
+
+    # Try to open the sheet; auto-create if not found
+    try:
+        sh = client.open(SHEET_NAME)
+    except gspread.exceptions.SpreadsheetNotFound:
+        sh = client.create(SHEET_NAME)
+        # Share with owner so they can view it in their Google Drive
+        if OWNER_EMAIL:
+            sh.share(OWNER_EMAIL, perm_type="user", role="writer")
+        print(f"Created new spreadsheet: {SHEET_NAME} (id={sh.id})")
+
     try:
         ws = sh.worksheet(WORKSHEET_NAME)
     except gspread.WorksheetNotFound:
