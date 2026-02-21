@@ -488,12 +488,36 @@ def debug_info():
             creds_email = f"JSON_PARSE_ERROR: {repr(ex)}"
     elif os.path.exists(GOOGLE_CREDS_FILE):
         creds_email = f"FROM_FILE:{GOOGLE_CREDS_FILE}"
+    
+    # Step-by-step test
+    steps = {}
+    try:
+        client = get_gspread_client()
+        steps["auth"] = "OK"
+    except Exception as e:
+        steps["auth"] = repr(e)
+        return {"service_account_email": creds_email, "steps": steps}
+
+    try:
+        sh = client.open_by_key(SPREADSHEET_ID) if SPREADSHEET_ID else client.open(SHEET_NAME)
+        steps["open_sheet"] = f"OK — title={sh.title}"
+    except Exception as e:
+        steps["open_sheet"] = repr(e)
+        return {"service_account_email": creds_email, "steps": steps}
+
+    try:
+        ws = sh.worksheet(WORKSHEET_NAME)
+        steps["open_worksheet"] = f"OK — rows={ws.row_count}"
+    except Exception as e:
+        steps["open_worksheet"] = repr(e)
+
     return {
         "service_account_email": creds_email,
         "spreadsheet_id": SPREADSHEET_ID or "(not set, using name lookup)",
         "sheet_name": SHEET_NAME,
         "worksheet_name": WORKSHEET_NAME,
         "has_line_secret": bool(LINE_CHANNEL_SECRET),
+        "steps": steps,
     }
 
 
