@@ -44,16 +44,18 @@ SCOPES = [
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "")
 
-def get_worksheet():
+def get_gspread_client() -> gspread.Client:
+    """Return an authenticated gspread client using modern v6 API."""
     if GOOGLE_CREDS_JSON:
         creds_dict = json.loads(GOOGLE_CREDS_JSON)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        return gspread.service_account_from_dict(creds_dict)
     elif os.path.exists(GOOGLE_CREDS_FILE):
-        creds = Credentials.from_service_account_file(GOOGLE_CREDS_FILE, scopes=SCOPES)
+        return gspread.service_account(filename=GOOGLE_CREDS_FILE)
     else:
         raise RuntimeError("No Google credentials found. Set GOOGLE_CREDENTIALS_JSON or provide credentials.json")
 
-    client = gspread.authorize(creds)
+def get_worksheet():
+    client = get_gspread_client()
 
     # Open by ID (most reliable) or by name, then auto-create if not found
     if SPREADSHEET_ID:
