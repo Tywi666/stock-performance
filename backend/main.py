@@ -42,6 +42,7 @@ SCOPES = [
 ]
 
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "")
 
 def get_worksheet():
     if GOOGLE_CREDS_JSON:
@@ -54,20 +55,21 @@ def get_worksheet():
 
     client = gspread.authorize(creds)
 
-    # Try to open the sheet; auto-create if not found
-    try:
-        sh = client.open(SHEET_NAME)
-    except gspread.exceptions.SpreadsheetNotFound:
-        sh = client.create(SHEET_NAME)
-        # Share with owner so they can view it in their Google Drive
-        if OWNER_EMAIL:
-            sh.share(OWNER_EMAIL, perm_type="user", role="writer")
-        print(f"Created new spreadsheet: {SHEET_NAME} (id={sh.id})")
+    # Open by ID (most reliable) or by name, then auto-create if not found
+    if SPREADSHEET_ID:
+        sh = client.open_by_key(SPREADSHEET_ID)
+    else:
+        try:
+            sh = client.open(SHEET_NAME)
+        except gspread.exceptions.SpreadsheetNotFound:
+            sh = client.create(SHEET_NAME)
+            if OWNER_EMAIL:
+                sh.share(OWNER_EMAIL, perm_type="user", role="writer")
+            print(f"Created new spreadsheet: {SHEET_NAME} (id={sh.id})")
 
     try:
         ws = sh.worksheet(WORKSHEET_NAME)
     except gspread.WorksheetNotFound:
-        # Auto-create with headers
         ws = sh.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=10)
         ws.append_row(["id", "date", "ticker", "type", "shares", "price", "total_amount", "dividend", "note"])
     return ws
