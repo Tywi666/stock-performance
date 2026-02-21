@@ -1,11 +1,13 @@
 import os
+import io
+import csv
 import json
 import uuid
 from datetime import datetime
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -251,6 +253,88 @@ def delete_transaction(tx_id: str):
 
     ws.delete_rows(row_num)
     return {"success": True, "deleted_id": tx_id}
+
+
+@app.post("/api/upload")
+async def upload_transactions(file: UploadFile = File(...)):
+    """
+    Bulk upload transactions from CSV or XLSX.
+    Required columns: date, ticker, type, shares, total_amount
+    Optional columns: price, dividend, note
+
+    type values: PURCHASE or DIVIDEND (or 買入/股利)
+    date format: yyyy/mm/dd or yyyy-mm-dd
+    """
+    filename = file.filename or ""
+    content = await file.read()
+
+    rows = []
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws_xl = wb.active
+            headers = [str(c.value).strip() if c.value else "" for c in next(ws_xl.iter_rows())]
+            for xl_row in ws_xl.iter_rows(min_row=2, values_only=True):
+                if all(v is None for v in xl_row):
+                    continue
+                rows.append(dict(zip(headers, [str(v).strip() if v is not None else "" for v in xl_row])))
+        else:
+            # CSV (default)
+            text = content.decode("utf-8-sig")  # handle BOM
+            reader = csv.DictReader(io.StringIO(text))
+            for r in reader:
+                rows.append({k.strip(): v.strip() for k, v in r.items()})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Parse error: {repr(e)}")
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="File is empty or has no data rows")
+
+    # Normalize type names
+    TYPE_MAP = {
+        "買入": "PURCHASE", "purchase": "PURCHASE", "buy": "PURCHASE",
+        "股利": "DIVIDEND", "dividend": "DIVIDEND", "div": "DIVIDEND",
+    }
+
+    try:
+        ws = get_worksheet()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=repr(e))
+
+    inserted = 0
+    errors = []
+    batch = []
+    for i, row in enumerate(rows, start=2):
+        try:
+            tx_type = TYPE_MAP.get(row.get("type", "").lower(), row.get("type", "PURCHASE").upper())
+            ticker  = row.get("ticker", "").upper().strip()
+            date    = row.get("date", "").replace("-", "/")
+            shares  = int(float(row.get("shares") or 0))
+            total   = float(row.get("total_amount") or 0)
+            price   = float(row.get("price") or (total / shares if shares else 0))
+            dividend = float(row.get("dividend") or 0)
+            note    = row.get("note", "")
+            tx_id   = str(uuid.uuid4())[:8]
+
+            if not ticker or not date:
+                errors.append(f"Row {i}: missing ticker or date")
+                continue
+
+            batch.append([tx_id, date, ticker, tx_type, shares, round(price, 2), round(total, 2), dividend, note])
+            inserted += 1
+        except Exception as e:
+            errors.append(f"Row {i}: {repr(e)}")
+
+    if batch:
+        ws.append_rows(batch)  # batch write — faster than append_row one by one
+
+    return {
+        "success": True,
+        "inserted": inserted,
+        "errors": errors,
+        "total_rows": len(rows),
+    }
 
 
 @app.get("/api/transactions/{ticker}/recent")
