@@ -25,11 +25,11 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 
 # ─── Config ──────────────────────────────────────────────────────────────────
-SHEET_NAME      = os.environ.get("SHEET_NAME", "Antigravity_Stock_Bot")
-WORKSHEET_NAME  = os.environ.get("WORKSHEET_NAME", "RawData")
+SHEET_NAME        = os.environ.get("SHEET_NAME", "Antigravity_Stock_Bot")
+WORKSHEET_NAME    = os.environ.get("WORKSHEET_NAME", "RawData")
 LINE_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-FRONTEND_URL    = os.environ.get("FRONTEND_URL", "*")
+FRONTEND_URL      = os.environ.get("FRONTEND_URL", "*")
 
 # Google Sheets credentials — supports inline JSON string OR file path
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
@@ -82,9 +82,16 @@ def find_row_by_id(ws, tx_id: str) -> Optional[int]:
     return None
 
 
-# ─── LINE Bot setup ──────────────────────────────────────────────────────────
-line_config = Configuration(access_token=LINE_ACCESS_TOKEN)
-line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
+# ─── LINE Bot setup (lazy init — avoids crash when env vars are empty) ────────
+_line_handler: Optional[WebhookHandler] = None
+
+def get_line_handler() -> WebhookHandler:
+    global _line_handler
+    if _line_handler is None:
+        if not LINE_CHANNEL_SECRET:
+            raise RuntimeError("LINE_CHANNEL_SECRET is not set")
+        _line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
+    return _line_handler
 
 # Pending delete state: { user_id: [ list of recent transactions ] }
 pending_deletes: dict[str, list[dict]] = {}
@@ -92,7 +99,7 @@ pending_deletes: dict[str, list[dict]] = {}
 # ─── FastAPI app ─────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure sheet headers on startup
+    # Try to verify sheet headers on startup (non-fatal)
     try:
         ws = get_worksheet()
         ensure_headers(ws)
@@ -252,18 +259,23 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
     body_str = body.decode("utf-8")
 
     try:
-        line_handler.handle(body_str, x_line_signature)
+        handler = get_line_handler()
+        handler.handle(body_str, x_line_signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid LINE signature")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     return {"status": "ok"}
 
 
-@line_handler.add(MessageEvent, message=TextMessageContent)
-def handle_line_message(event: MessageEvent):
+def _handle_line_event(event: MessageEvent):
+    """Process a LINE message event."""
     user_id = event.source.user_id
     msg = event.message.text.strip()
     parts = msg.split()
+
+    line_config = Configuration(access_token=LINE_ACCESS_TOKEN)
 
     with ApiClient(line_config) as api_client:
         line_api = MessagingApi(api_client)
@@ -427,6 +439,19 @@ def handle_line_message(event: MessageEvent):
                 "📊 查詢:\n"
                 "query 代號"
             )
+
+
+# Register handler after the function is defined
+try:
+    _h = get_line_handler()
+
+    @_h.add(MessageEvent, message=TextMessageContent)
+    def _on_message(event: MessageEvent):
+        _handle_line_event(event)
+
+except Exception:
+    # LINE_CHANNEL_SECRET not set at startup — handler will be registered on first webhook hit
+    pass
 
 
 # ─── Health check ─────────────────────────────────────────────────────────────
