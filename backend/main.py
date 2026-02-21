@@ -153,7 +153,7 @@ def get_portfolio():
         ws = get_worksheet()
         records = all_records(ws)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=repr(e))
 
     portfolio: dict = {}
     for row in records:
@@ -188,7 +188,7 @@ def get_stock_summary(ticker: str):
         ws = get_worksheet()
         records = all_records(ws)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=repr(e))
 
     ticker = ticker.upper()
     txs = [r for r in records if str(r.get("ticker", "")).upper() == ticker]
@@ -217,7 +217,7 @@ def add_transaction(req: AddTransactionRequest):
     try:
         ws = get_worksheet()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=repr(e))
 
     tx_id = str(uuid.uuid4())[:8]
     ticker = req.ticker.upper().strip()
@@ -242,7 +242,7 @@ def delete_transaction(tx_id: str):
         ws = get_worksheet()
         row_num = find_row_by_id(ws, tx_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=repr(e))
 
     if not row_num:
         raise HTTPException(status_code=404, detail=f"Transaction {tx_id} not found")
@@ -258,7 +258,7 @@ def get_recent_transactions(ticker: str, limit: int = 5):
         ws = get_worksheet()
         records = all_records(ws)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=repr(e))
 
     ticker = ticker.upper()
     txs = [r for r in records if str(r.get("ticker", "")).upper() == ticker]
@@ -278,7 +278,7 @@ async def line_webhook(request: Request, x_line_signature: str = Header(None)):
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid LINE signature")
     except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=repr(e))
 
     return {"status": "ok"}
 
