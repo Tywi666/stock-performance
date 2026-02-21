@@ -37,7 +37,7 @@ GOOGLE_CREDS_FILE = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json"
 
 # ─── Google Sheets helper ────────────────────────────────────────────────────
 SCOPES = [
-    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
