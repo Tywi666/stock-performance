@@ -10,6 +10,7 @@ interface Props {
 
 const TransactionTable: React.FC<Props> = ({ transactions, onRefresh }) => {
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [sortAsc, setSortAsc] = useState(false); // false = newest first
 
     const handleDelete = async (id: string) => {
         if (!window.confirm('確定要刪除這筆交易嗎？')) return;
@@ -25,12 +26,32 @@ const TransactionTable: React.FC<Props> = ({ transactions, onRefresh }) => {
         }
     };
 
-    const parseDate = (d: string) => new Date(d.replace(/\//g, '-'));
-    const sorted = [...transactions].sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
+    // Robust date parser: split "yyyy/m/d" or "yyyy-m-d" manually
+    const parseDate = (d: string): number => {
+        const parts = d.split(/[\/\-]/);
+        const y = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        const day = parseInt(parts[2], 10) || 0;
+        return y * 10000 + m * 100 + day; // e.g. 20260207
+    };
+
+    const sorted = [...transactions].sort((a, b) => {
+        const diff = parseDate(a.date) - parseDate(b.date);
+        return sortAsc ? diff : -diff;
+    });
 
     return (
         <div className="card">
-            <h2 style={{ marginBottom: '1rem', color: 'var(--accent)' }}>交易紀錄</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <h2 style={{ color: 'var(--accent)' }}>交易紀錄</h2>
+                <button
+                    className="btn-secondary"
+                    onClick={() => setSortAsc(prev => !prev)}
+                    title={sortAsc ? '目前：舊→新，點擊切換' : '目前：新→舊，點擊切換'}
+                >
+                    {sortAsc ? '⬆ 舊→新' : '⬇ 新→舊'}
+                </button>
+            </div>
             <div className="table-wrapper">
                 <table>
                     <thead>
