@@ -35,4 +35,8 @@ export const api = {
 
     deleteTransaction: (id: string) =>
         request<{ success: boolean }>(`/api/transactions/${id}`, { method: 'DELETE' }),
+
+    getPrice: (ticker: string) =>
+        request<{ ticker: string; price: number }>(`/api/price/${ticker}`),
 };
+

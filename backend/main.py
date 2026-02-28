@@ -3,6 +3,7 @@ import io
 import csv
 import json
 import uuid
+import requests as http_requests
 from datetime import datetime
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -87,8 +88,28 @@ def ensure_headers(ws):
 
 
 def all_records(ws) -> list[dict]:
-    records = ws.get_all_records()
+    # numericise_ignore=['all'] preserves leading-zero tickers like '00878'
+    records = ws.get_all_records(numericise_ignore=['all'])
     return records
+
+
+def normalize_ticker(ticker: str) -> str:
+    """Reconstruct proper TW ticker with leading zeros.
+
+    Google Sheets stores '00878' as integer 878 (dropping leading zeros).
+    Rules for numeric tickers:
+      - value < 1000  → 5-digit ETF code, e.g. 878 → '00878'
+      - value < 10000 → 4-digit stock code, e.g. 2330 → '2330'
+    Non-numeric tickers (e.g. 'ETF', 'TSLA') are just uppercased.
+    """
+    t = ticker.strip().upper()
+    if t.isdigit():
+        n = int(t)
+        if n < 1000:
+            return t.zfill(5)   # ETF: 878 → 00878
+        elif n < 10000:
+            return t.zfill(4)   # Stock: 2330 stays 2330
+    return t
 
 
 def find_row_by_id(ws, tx_id: str) -> Optional[int]:
@@ -161,7 +182,7 @@ def get_portfolio():
 
     portfolio: dict = {}
     for row in records:
-        ticker = str(row.get("ticker", "")).upper().strip()
+        ticker = normalize_ticker(str(row.get("ticker", "")))
         if not ticker:
             continue
         if ticker not in portfolio:
@@ -335,6 +356,39 @@ async def upload_transactions(file: UploadFile = File(...)):
         "errors": errors,
         "total_rows": len(rows),
     }
+
+
+# ─── Stock price (Yahoo Finance Taiwan) ─────────────────────────────────────
+def fetch_tw_price(ticker: str) -> float:
+    """Fetch current price from Yahoo Finance for TW stocks. Returns 0 on failure."""
+    # Normalize: ensure ticker is zero-padded to 4 digits if numeric, then add .TW suffix
+    normalized = ticker.zfill(4) if ticker.isdigit() else ticker
+    symbol = f"{normalized}.TW"
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        resp = http_requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        data = resp.json()
+        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+        return float(price)
+    except Exception:
+        # Try OTC (.TWO suffix) as fallback
+        try:
+            symbol_otc = f"{normalized}.TWO"
+            url2 = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol_otc}"
+            resp2 = http_requests.get(url2, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+            data2 = resp2.json()
+            return float(data2["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        except Exception:
+            return 0.0
+
+
+@app.get("/api/price/{ticker}")
+def get_price(ticker: str):
+    """Return current market price for a TW stock ticker."""
+    price = fetch_tw_price(ticker)
+    if price == 0:
+        raise HTTPException(status_code=404, detail=f"Price not found for {ticker}")
+    return {"ticker": ticker, "price": price}
 
 
 @app.get("/api/transactions/{ticker}/recent")

@@ -17,6 +17,18 @@ const App: React.FC = () => {
     const loadPortfolio = useCallback(async () => {
         try {
             const data = await api.getPortfolio();
+
+            // Fetch prices for all tickers in parallel
+            const tickers = Object.keys(data);
+            const priceResults = await Promise.allSettled(
+                tickers.map(t => api.getPrice(t))
+            );
+            priceResults.forEach((result, i) => {
+                if (result.status === 'fulfilled') {
+                    data[tickers[i]].currentPrice = result.value.price;
+                }
+            });
+
             setPortfolio(data);
             // Keep active ticker valid
             setActiveTicker(prev => {
@@ -74,8 +86,14 @@ const App: React.FC = () => {
         if (!activeTicker) return;
         setPriceLoading(true);
         try {
-            // Try FinMind or Yahoo as a simple placeholder — just reload portfolio
-            await loadPortfolio();
+            const result = await api.getPrice(activeTicker);
+            setPortfolio(prev => ({
+                ...prev,
+                [activeTicker]: { ...prev[activeTicker], currentPrice: result.price },
+            }));
+            toast(`✅ ${activeTicker} 市價已更新：$${result.price}`, 'success');
+        } catch (err) {
+            toast(`⚠️ 無法取得 ${activeTicker} 市價：${(err as Error).message}`, 'error');
         } finally {
             setPriceLoading(false);
         }
