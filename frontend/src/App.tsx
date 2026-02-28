@@ -11,10 +11,12 @@ const App: React.FC = () => {
     const [portfolio, setPortfolio] = useState<Portfolio>({});
     const [activeTicker, setActiveTicker] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [priceLoading, setPriceLoading] = useState(false);
 
     // ── Load data from API ───────────────────────────────────────
     const loadPortfolio = useCallback(async () => {
+        setRefreshing(true);
         try {
             const data = await api.getPortfolio();
 
@@ -35,10 +37,12 @@ const App: React.FC = () => {
                 if (prev && data[prev]) return prev;
                 return Object.keys(data)[0] ?? null;
             });
+            toast('✅ 資料已更新', 'success');
         } catch (err) {
             toast(`載入失敗: ${(err as Error).message}`, 'error');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, []);
 
@@ -118,7 +122,10 @@ const App: React.FC = () => {
                         <h1>存股統計</h1>
                         <div className="subtitle">Stock Performance Tracker</div>
                     </div>
-                    <button className="btn-secondary" onClick={loadPortfolio}>↻ 重新整理</button>
+                    <button className="btn-secondary" onClick={loadPortfolio} disabled={refreshing}>
+                        <span className={refreshing ? 'btn-spin' : ''} style={{ display: 'inline-block' }}>↻</span>
+                        {refreshing ? ' 載入中…' : ' 重新整理'}
+                    </button>
                 </header>
 
                 {/* Stock Tabs */}
