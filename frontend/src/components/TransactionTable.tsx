@@ -25,7 +25,7 @@ const TransactionTable: React.FC<Props> = ({ transactions, onRefresh }) => {
         }
     };
 
-    const sorted = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
+    const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
 
     return (
         <div className="card">
