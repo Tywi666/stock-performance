@@ -25,7 +25,8 @@ const TransactionTable: React.FC<Props> = ({ transactions, onRefresh }) => {
         }
     };
 
-    const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+    const parseDate = (d: string) => new Date(d.replace(/\//g, '-'));
+    const sorted = [...transactions].sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
 
     return (
         <div className="card">
